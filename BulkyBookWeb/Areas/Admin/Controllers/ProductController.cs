@@ -20,8 +20,7 @@ public class ProductController : Controller
         }
         public IActionResult Index()
         {
-            IEnumerable<Product> objProductList = _unitOfWork.Product.GetAll();
-            return View(objProductList);
+            return View();
         }
     //Upsert GET
     public IActionResult Upsert(int? id)
@@ -48,10 +47,10 @@ public class ProductController : Controller
             }
         else
         {
-            //update product
-        }
+            productVM.Product = _unitOfWork.Product.GetFirstOrDefault(u => u.Id == id);
             return View(productVM);
         }
+    }
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult Upsert(ProductVM obj,IFormFile? file)
@@ -62,44 +61,63 @@ public class ProductController : Controller
             if (file != null)
             {
                 string fileName = Guid.NewGuid().ToString();
-                var uploads = Path.Combine(webRootPath, @"images\products");
+                var uploads = Path.Combine(webRootPath, @"images\products\");
                 var extension = Path.GetExtension(file.FileName);
+
+                if (obj.Product.ImageUrl != null)
+                {
+                    var oldImagePath = Path.Combine(webRootPath, obj.Product.ImageUrl.TrimStart('\\'));
+                    if (System.IO.File.Exists(oldImagePath))
+                    {
+                        System.IO.File.Delete(oldImagePath);
+                    }
+                }
+
                 using (var fileStreams = new FileStream(Path.Combine(uploads, fileName + extension), FileMode.Create))
                 {
                     file.CopyTo(fileStreams);
                 }
-                obj.Product.ImageUrl = @"\images\products" + fileName + extension;
+                obj.Product.ImageUrl = @"\images\products\" + fileName + extension;
             }
+            if (obj.Product.Id == 0)
+            {
                 _unitOfWork.Product.Add(obj.Product);
-                _unitOfWork.Save();
-                TempData["success"] = "Product created successfully";
-                return RedirectToAction("Index");
+            _unitOfWork.Save();
+            TempData["success"] = "Product created successfully";
+            }
+            else
+            {
+                _unitOfWork.Product.Update(obj.Product);
+            _unitOfWork.Save();
+            TempData["success"] = "Product updated successfully";
+            }
+            return RedirectToAction("Index");
             }
             return View(obj);
         }
-        //Delete GET
-        public IActionResult Delete(int? id)
+    #region API CALLS
+    [HttpGet]
+    public IActionResult GetAll()
+    {
+        var productList= _unitOfWork.Product.GetAll(includeProperties:"Category,CoverType");
+        return Json(new { data = productList });
+	}
+	[HttpDelete]
+	public IActionResult Delete(int? id)
+	{
+        var obj = _unitOfWork.Product.GetFirstOrDefault(u => u.Id == id);
+        if (obj == null)
         {
-            if (id == null || id == 0)
-            {
-                return NotFound();
-            }
-            //var categoryFromDb = _db.Categories.Find(id);
-            var productFromDb = _unitOfWork.Product.GetFirstOrDefault(c => c.Id == id);
-            //var category = _db.Categories.SingleOrDefault(c => c.Id == id);
-            if (productFromDb == null)
-            {
-                return NotFound();
-            }
-            return View(productFromDb);
+            return Json(new { success = false, message = "Error while deleting" });
         }
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult Delete(Product obj)
-        {
-            _unitOfWork.Product.Remove(obj);
-            _unitOfWork.Save();
-            TempData["success"] = "Product deleted successfully";
-            return RedirectToAction("Index");
-        }
-    }
+		var oldImagePath = Path.Combine(_hostEnvironment.WebRootPath, obj.ImageUrl.TrimStart('\\'));
+		if (System.IO.File.Exists(oldImagePath))
+		{
+			System.IO.File.Delete(oldImagePath);
+		}
+		_unitOfWork.Product.Remove(obj);
+		_unitOfWork.Save();
+        return Json(new { success = true, message = "Delete Successful" });
+	}
+	#endregion
+}
