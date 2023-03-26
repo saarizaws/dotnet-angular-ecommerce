@@ -29,16 +29,37 @@ public class HomeController : Controller
         return View(productList);
     }
 
-    public IActionResult Details(int id)
+    public IActionResult Details(int productId)
     {
         ShoppingCart cartObj = new()
         {
             Count = 1,
-            //ProductId = productId,
-            Product = _unitOfWork.Product.GetFirstOrDefault(u => u.Id == id, includeProperties: "Category,CoverType"),
+            ProductId = productId,
+            Product = _unitOfWork.Product.GetFirstOrDefault(u => u.Id == productId, includeProperties: "Category,CoverType"),
         };
 
         return View(cartObj);
+    }
+    [HttpPost]
+    [AutoValidateAntiforgeryToken]
+    [Authorize]
+    public IActionResult Details(ShoppingCart shoppingCart)
+    {
+        var claimsIdentity = (ClaimsIdentity)User.Identity;
+        var claim = claimsIdentity.FindFirst(ClaimTypes.NameIdentifier);
+        shoppingCart.ApplicationUserId = claim.Value;
+
+        ShoppingCart cartfromDB = _unitOfWork.ShoppingCart.GetFirstOrDefault(u=>u.ApplicationUserId==claim.Value && u.ProductId==shoppingCart.ProductId);
+        if (cartfromDB == null)
+        {
+            _unitOfWork.ShoppingCart.Add(shoppingCart);
+        }
+        else
+        {
+            _unitOfWork.ShoppingCart.IncrementCount(cartfromDB, shoppingCart.Count);
+        }
+        _unitOfWork.Save();
+        return RedirectToAction(nameof(Index));
     }
     public IActionResult Privacy()
     {
